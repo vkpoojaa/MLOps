@@ -23,8 +23,10 @@ def _sandbox_settings(settings, tmp_path, *, copy_production_artifacts=True):
         metadata = settings.resolve(
             settings.config.model_gate.production_metadata_path
         )
+
         if prod.is_file():
             shutil.copy2(prod, root / settings.config.paths.selected_model)
+
         if metadata.is_file():
             shutil.copy2(
                 metadata,
