@@ -1,0 +1,332 @@
+# =============================================================================
+# config/config.yaml  -  SINGLE SOURCE OF TRUTH for the Project 4 MLOps pipeline
+# =============================================================================
+# Rules
+#   * No dataset paths, column names, thresholds or hyperparameters may be
+#     hard-coded in Python. Code reads them from here via mlops_pipeline.config.
+#   * `null` means "decision intentionally pending" - NOT a default. Thresholds
+#     are not invented in Phase 1; each is set in the phase that justifies it.
+#     `python -m mlops_pipeline validate-config` lists every pending setting.
+#   * Values marked [BASELINE DEFAULT] are design choices made while scaffolding
+#     (not stated in the project brief). Confirm or change them before modelling starts.
+#   * Unknown keys are rejected on load (typos fail loudly).
+# =============================================================================
+
+config_version: 1
+
+project:
+  name: mlops-house-price-pipeline
+  version: 0.1.0
+  description: >-
+    Project 4 capstone - end-to-end MLOps pipeline predicting asking prices
+    (Rs lakhs) for property listings.
+
+reproducibility:
+  random_seed: 42            # [BASELINE DEFAULT] project-wide seed
+  # Repeated same-environment runs were metric-identical in existing tests.
+  # 1e-12 is a floating-point comparison guard, not model-quality slack.
+  metric_tolerance: 1.0e-12
+
+# -----------------------------------------------------------------------------
+# Paths - relative to the repository root (absolute paths and '..' are rejected)
+# -----------------------------------------------------------------------------
+paths:
+  train_data: data/raw/capstone_house_prices_train.csv
+  incoming_data: data/raw/capstone_incoming_batches.csv
+  interim_dir: data/interim
+  processed_dir: data/processed
+  artifacts_dir: artifacts
+  logs_dir: logs
+  reports_dir: reports
+  models_dir: artifacts/models                    # one fitted pipeline per model (Phase 2)
+  selected_model: artifacts/models/selected_model.joblib   # complete preprocessing+model pipeline
+  evaluation_report: reports/model_evaluation.json         # metrics, selection, leakage checks
+
+# -----------------------------------------------------------------------------
+# Column roles - what each column is FOR. Dtypes/ranges live in data_contract.
+# Every column in data_contract must appear exactly once below.
+# -----------------------------------------------------------------------------
+columns:
+  target: Price_Lakhs
+  features:
+    numeric:
+      - Area_sqft
+      - Bedrooms
+      - Bathrooms
+      - Age_Years
+      - Distance_to_Center_km
+      - Neighborhood_Score
+      - Has_Parking           # binary 0/1, treated as numeric
+    categorical:
+      - Property_Condition
+      - City_Zone
+  excluded:                   # never predictive features
+    House_ID:
+      role: identifier
+      reason: Unique listing identifier; not predictive.
+    Batch:
+      role: batch
+      reason: Batch metadata (incoming file only); not predictive.
+
+# -----------------------------------------------------------------------------
+# Data contract - structural expectations for the raw files.
+# Only constraints documented in the project brief's data dictionary are set.
+# `min` / `max` are deliberately omitted where the brief gives no range;
+# data-gate value ranges are decided in the gates phase.
+# -----------------------------------------------------------------------------
+data_contract:
+  version: 1
+  allow_unexpected_columns: false
+  columns:
+    House_ID:
+      dtype: string
+      nullable: false
+      unique: true
+      available_in: [train, incoming]
+    Batch:
+      dtype: integer
+      nullable: false
+      allowed_values: [1, 2, 3]
+      available_in: [incoming]
+    Area_sqft:
+      dtype: integer
+      nullable: false
+      available_in: [train, incoming]
+    Bedrooms:
+      dtype: integer
+      nullable: false
+      available_in: [train, incoming]
+    Bathrooms:
+      dtype: integer
+      nullable: false
+      available_in: [train, incoming]
+    Age_Years:
+      dtype: integer          # integer-valued; stored as float64 when NaN present
+      nullable: true
+      available_in: [train, incoming]
+    Distance_to_Center_km:
+      dtype: float
+      nullable: true
+      available_in: [train, incoming]
+    Neighborhood_Score:
+      dtype: float
+      nullable: true
+      min: 1                  # brief: "score from 1 to 10"
+      max: 10
+      available_in: [train, incoming]
+    Has_Parking:
+      dtype: integer
+      nullable: false
+      allowed_values: [0, 1]
+      available_in: [train, incoming]
+    Property_Condition:
+      dtype: categorical
+      nullable: false
+      allowed_values: [Poor, Fair, Good, Excellent]
+      available_in: [train, incoming]
+    City_Zone:
+      dtype: categorical
+      nullable: false
+      allowed_values: [North, South, East, West, Central]
+      available_in: [train, incoming]
+    Price_Lakhs:
+      dtype: float
+      nullable: false
+      available_in: [train, incoming]
+
+# -----------------------------------------------------------------------------
+# Preprocessing  [CONFIRMED in Phase 2]
+#   Checked on the TRAINING split only: missingness (~4% in 3 columns) is not
+#   related to price, so median imputation without indicator columns is kept.
+#   No scaling: linear regression (OLS) and tree models are scale-invariant.
+# -----------------------------------------------------------------------------
+preprocessing:
+  numeric:
+    imputation:
+      strategy: median        # mean | median | most_frequent
+      add_missing_indicator: false
+    scaling: none             # none | standard | minmax
+  categorical:
+    handle_unknown: ignore    # ignore | error
+    encoders:                 # one entry per categorical feature
+      Property_Condition:
+        type: ordinal
+        order: [Poor, Fair, Good, Excellent]   # brief lists Poor/Fair/Good/Excellent
+      City_Zone:
+        type: onehot
+
+# -----------------------------------------------------------------------------
+# Model settings (Phase 2)
+#   Exactly two models are compared with the SAME split, preprocessing and metrics:
+#   a simple explainable baseline and one stronger candidate. Hyperparameters were
+#   fixed before any results were seen and are NOT tuned. The random seed comes
+#   from reproducibility.random_seed (do not put random_state in hyperparameters).
+#   `selected` stays null until the comparison results have been reviewed.
+# -----------------------------------------------------------------------------
+model:
+  problem_type: regression
+  baseline:
+    name: linear_regression_baseline
+    algorithm: linear_regression      # linear_regression | ridge | random_forest | gradient_boosting
+    hyperparameters: {}
+  candidate:
+    name: gradient_boosting_candidate
+    algorithm: gradient_boosting
+    hyperparameters:
+      n_estimators: 300
+      learning_rate: 0.05
+      max_depth: 3
+  # Selected AFTER reviewing the results of the run (reports/model_evaluation.json):
+  #   * validation MAE: candidate 5.7777 vs baseline 5.7931 (0.0154 lakhs, 0.27% better) but the
+  #     paired-bootstrap 95% CI of that difference is [-0.21, +0.20] -> indistinguishable from zero;
+  #   * baseline is better on validation RMSE (7.504 vs 7.585) and R2 (0.8831 vs 0.8806);
+  #   * 5-fold CV on the training split: baseline MAE 5.682 vs candidate 5.857; baseline better in 4 of 5 folds;
+  #   * candidate over-fits (train MAE 4.75 vs CV MAE 5.86; baseline 5.65 vs 5.68).
+  # Equal accuracy within noise -> the simpler, explainable model is selected. This is a deliberate
+  # deviation from "lowest validation primary metric" (see report: matches_best_on_validation=false).
+  selected: baseline                  # baseline | candidate (null = pending)
+  split:
+    test_size: 0.2                    # validation fraction of the training file
+  evaluation:
+    primary_metric: mae               # chosen before results: error in the target's own unit (Rs lakhs)
+    secondary_metrics: [rmse, r2]
+    cv_folds: 5                       # K-fold CV on the training split only (both models)
+
+# -----------------------------------------------------------------------------
+# Data validation (Task 4 data gate)  [Phase 3A - thresholds PROPOSED, see docs/DATA_VALIDATION.md]
+#   Implemented by mlops_pipeline.data.validation (separate from preprocessing).
+#   Structure (dtype, nullability, allowed values, uniqueness, brief-documented min/max)
+#   comes from `data_contract`; this section adds only what the contract does not hold.
+#   Rationale for every value below is in docs/DATA_VALIDATION.md. Numbers marked
+#   "observed" were measured on the supplied files (train 4000 rows; incoming 1500 rows,
+#   3 batches of 500) and are NOT requirements of the brief. They are plausibility /
+#   corruption guards, not drift detectors (drift is Task 7; the brief says incoming
+#   batches may legitimately differ from the training data).
+#   Misconfiguration (missing limit, contradiction, unknown column) raises ConfigError.
+# -----------------------------------------------------------------------------
+validation:
+  checks:                     # a disabled check is reported as "skipped", never silently dropped
+    schema: true              # columns present/unexpected/duplicated, dtypes, row count
+    value_ranges: true        # numeric ranges and non-finite values
+    missing_values: true      # per-column and overall missing-fraction limits
+    categorical_values: true  # allowed_values from data_contract (categories, binary flag, batch id)
+    target: true              # presence, missing, finite, range, not constant
+    duplicates: true          # duplicated records (content, ignoring identifier/batch)
+    identifiers: true         # uniqueness, format, disjointness from training ids
+  missing_values:
+    # Observed: 4.0% in each of the 3 nullable columns, in train AND in each 500-row batch;
+    # 1.09% (train) / 1.0% (incoming) of all cells.
+    # Per-column 8% = 2x observed (4.5 binomial sd above 4% for n=500; P(false alarm) ~1.6e-5).
+    # Required for every nullable contract column; non-nullable columns are fixed at 0 by the contract.
+    max_fraction_per_column:
+      Age_Years: 0.08
+      Distance_to_Center_km: 0.08
+      Neighborhood_Score: 0.08
+    # Overall 1.5% = 1.4x observed; ~3.9 sd above the expected count for a 500-row batch.
+    # Binds before the per-column limits when several columns degrade together (3 columns at 6% = 1.5%).
+    max_overall_fraction: 0.015
+  # Plausibility ranges (inclusive) for numeric columns WITHOUT a brief-documented range.
+  # Neighborhood_Score is deliberately absent: its 1-10 range is in data_contract (brief).
+  # Observed ranges are in the comments; bounds are wide on purpose so that a legitimately
+  # different batch is not halted, while negatives, zeros and unit/scale errors are caught.
+  numeric_ranges:
+    Area_sqft: {min: 100, max: 6000}          # observed 350-2699; ~2.2x headroom above
+    Bedrooms: {min: 1, max: 10}               # observed 1-6; no studios (0) in training data
+    Bathrooms: {min: 1, max: 10}              # observed 1-5
+    Age_Years: {min: 0, max: 100}             # observed 0-40; negative age is impossible
+    Distance_to_Center_km: {min: 0, max: 100} # observed 1-45
+    Price_Lakhs: {min: 1, max: 500}           # target; observed 8-157.9; must be positive
+  target:
+    min_distinct_values: 2    # a regression target with <2 distinct values carries no signal
+  duplicates:
+    compare_roles: [features, target]   # a "duplicate listing" = same features and price, any id
+    max_duplicate_fraction: 0.0         # observed 0; copies would sit in both CV folds / validation split
+  identifiers:
+    pattern: '^HS-[0-9]{6}$'            # observed in both files; null disables the format check
+  # One profile per dataset kind. Roles: features | target | identifier | batch.
+  # `contract_dataset` selects which contract columns/specs apply (train or incoming).
+  profiles:
+    train:                    # historical file used to fit the model
+      contract_dataset: train
+      required_roles: [identifier, target, features]
+      optional_roles: []
+      min_rows: 1000          # 25% of the 4000 supplied rows: detects truncated files
+      check_duplicate_records: true
+      identifier_disjoint_from_training: false
+    incoming:                 # later batches with prices (monitoring / retraining candidates)
+      contract_dataset: incoming
+      required_roles: [identifier, batch, target, features]
+      optional_roles: []
+      min_rows: 100           # 20% of the 500-row batches: detects truncated batches
+      check_duplicate_records: true
+      identifier_disjoint_from_training: true   # observed 0 overlap; overlap would bias drift/performance
+    inference:                # serving / scoring requests: only the features are required
+      contract_dataset: incoming
+      required_roles: [features]
+      optional_roles: [identifier, batch, target]
+      min_rows: 1
+      check_duplicate_records: false            # identical scoring requests are legitimate
+      identifier_disjoint_from_training: false
+  on_failure: halt            # brief: stop cleanly, keep previous model serving (enforced in Part 2)
+
+# -----------------------------------------------------------------------------
+# Model Quality Gate (Phase 6). The primary metric is defined once above.
+# Absolute threshold is the observed validation MAE of the current production
+# linear-regression model on the fixed seed-42 split (reports/model_evaluation.json):
+# 5.793117272533898 Rs lakhs. This is a measured baseline, not an arbitrary margin.
+# Candidate must meet this threshold AND strictly improve on production's primary
+# metric. min_improvement=0.0 means no extra margin; equality does not count as
+# improvement. All gate thresholds are configurable here.
+# -----------------------------------------------------------------------------
+model_gate:
+  quality_threshold: 5.793117272533898
+  production_metadata_path: artifacts/models/production_model_metadata.json
+  production_comparison:
+    enabled: true
+    min_improvement: 0.0
+  on_failure: halt
+
+# -----------------------------------------------------------------------------
+# Monitoring (Task 7) - evidence-calibrated in Phase 14 from supplied data
+# Feature thresholds are calibrated per feature from the training-reference null
+# distribution; the scalar below is the maximum observed per-feature 95th-null PSI
+# and is retained as a conservative configuration summary. The runtime monitor
+# stores and applies the feature-specific thresholds in its evidence report.
+monitoring:
+  reference_dataset: train
+  data_drift:
+    method: psi_empirical_bootstrap
+    bootstrap_runs: 1000
+    bootstrap_batch_size: 500
+    per_feature_threshold: 0.038274   # max per-feature 95th-null PSI across 9 features
+    drifted_feature_share_threshold: 0.2222222222   # 2 of 9 features; empirical 95th-null share
+  performance_drift:
+    bootstrap_runs: 2000
+    bootstrap_batch_size: 500
+    max_degradation: 0.0602811985    # empirical 95th-null relative MAE degradation
+  operational:
+    # Evidence-based local SLOs: the Phase 13 real-traffic smoke test showed 0 errors;
+    # 1% is a conservative alert ceiling, while 100 ms is an interactive API ceiling.
+    latency_p95_ms_max: 100.0
+    error_rate_max: 0.01
+  on_alert: record_investigate_consider_retraining_keep_production_unchanged
+
+# -----------------------------------------------------------------------------
+# MLflow experiment tracking (Phase 5)
+# Local SQLite backend keeps runs durable and inspectable with `mlflow ui`.
+mlflow:
+  enabled: true
+  tracking_uri: sqlite:///mlflow.db
+  experiment_name: house-price-regression
+  artifact_subdirectory: phase5
+
+
+# -----------------------------------------------------------------------------
+# MLflow Model Registry (Phase 7)
+# Alias-based production identification avoids deprecated model stages.
+model_registry:
+  enabled: true
+  registered_model_name: house-price-regressor
+  candidate_alias: candidate
+  production_alias: production
+  await_registration_for_seconds: 120

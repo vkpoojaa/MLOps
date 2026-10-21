@@ -1,0 +1,5 @@
+# Final Reflection
+
+With more time, the first improvement would be to complete a reproducible live acceptance environment containing MLflow, Prefect, Docker, Prometheus and Grafana so every runtime claim can be demonstrated from a clean checkout rather than relying on controlled local tests for unavailable services. The second improvement would be to make the release environment fully self-service: a single documented command would provision the tracking/registry and monitoring dependencies, execute the pipeline, publish the image, and collect evidence links.
+
+A second area for improvement is operational depth. The current design separates operational metrics from data/performance drift and deliberately protects production with the Model Gate. With more time, alert routing, sustained-drift windows, and richer business-segment diagnostics could be added without weakening that safety boundary. Finally, contribution tracking and the final demonstration should be captured directly from the real team repository so the academic-integrity and collaboration requirements are verifiable rather than inferred from an exported source archive.

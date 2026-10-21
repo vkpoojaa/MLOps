@@ -1,0 +1,12 @@
+# Direct serving dependency pins; orchestration, tests, notebooks, and training extras are excluded.
+# Exact versions align with the project's documented sklearn/pandas runtime and pin the API/registry layer.
+fastapi==0.115.12
+uvicorn==0.34.2
+pydantic==2.14.0
+PyYAML==6.0.3
+numpy==2.4.4
+pandas==3.0.2
+scikit-learn==1.8.0
+joblib==1.5.3
+mlflow==2.22.0
+prometheus-client==0.25.0

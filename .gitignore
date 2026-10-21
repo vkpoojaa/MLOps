@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# Secrets - never commit credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials*.json
+
+# Generated outputs (directories kept via .gitkeep)
+data/interim/*
+data/processed/*
+artifacts/*
+logs/*
+reports/*
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+!artifacts/.gitkeep
+!logs/.gitkeep
+!reports/.gitkeep
+
+# Experiment tracking / orchestration state (later phases)
+mlruns/
+mlartifacts/
+mlflow.db
+.prefect/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+mlflow.db.*

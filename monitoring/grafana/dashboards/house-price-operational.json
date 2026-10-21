@@ -1,0 +1,72 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(rate(mlops_http_requests_total{path=\"/predict\"}[$__rate_interval]))", "legendFormat": "requests/sec"}],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}
+    },
+    {
+      "id": 2,
+      "title": "Request Latency p95",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(mlops_http_request_duration_seconds_bucket{path=\"/predict\"}[$__rate_interval])))", "legendFormat": "p95"}],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+    },
+    {
+      "id": 3,
+      "title": "Error Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [{"expr": "100 * sum(rate(mlops_http_requests_total{path=\"/predict\",status=~\"4..|5..\"}[$__rate_interval])) / clamp_min(sum(rate(mlops_http_requests_total{path=\"/predict\"}[$__rate_interval])), 1e-9)", "legendFormat": "error %"}],
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []}
+    },
+    {
+      "id": 4,
+      "title": "Prediction Distribution",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {"expr": "sum(rate(mlops_prediction_value_bucket[$__rate_interval])) by (le)", "legendFormat": "<= {{le}}"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+    },
+    {
+      "id": 5,
+      "title": "Total Predictions",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 16},
+      "targets": [{"expr": "sum(mlops_prediction_requests_total)", "legendFormat": "predictions"}],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+    },
+    {
+      "id": 6,
+      "title": "Prediction Error Count",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 16},
+      "targets": [{"expr": "sum(mlops_prediction_errors_total)", "legendFormat": "errors"}],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+    },
+    {
+      "id": 7,
+      "title": "API Scrape Up",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 16},
+      "targets": [{"expr": "up{job=\"house-price-api\"}", "legendFormat": "up"}],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["mlops", "operational-monitoring", "house-price"],
+  "templating": {"list": []},
+  "time": {"from": "now-15m", "to": "now"},
+  "title": "House Price API — Operational Monitoring",
+  "version": 1
+}

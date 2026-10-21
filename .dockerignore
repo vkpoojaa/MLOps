@@ -1,0 +1,42 @@
+# Version control and local environments
+.git/
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets and local environment overrides
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials*.json
+
+# Training data, fitted local artifacts, tracking state, and generated outputs.
+# Production models must be resolved from the approved registry, never copied into the image.
+data/
+artifacts/
+mlflow.db
+mlruns/
+mlartifacts/
+.prefect/
+logs/
+reports/
+notebooks/
+tests/
+docs/
+*.zip
+*.joblib
+*.pkl
+*.pickle
+
+# Build outputs
+build/
+dist/
+*.egg-info/
