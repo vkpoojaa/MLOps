@@ -23,8 +23,9 @@ def _sandbox_settings(settings, tmp_path, *, copy_production_artifacts=True):
         metadata = settings.resolve(
             settings.config.model_gate.production_metadata_path
         )
-        if prod.is_file() and metadata.is_file():
+        if prod.is_file():
             shutil.copy2(prod, root / settings.config.paths.selected_model)
+        if metadata.is_file():
             shutil.copy2(
                 metadata,
                 root / settings.config.model_gate.production_metadata_path,
@@ -50,7 +51,9 @@ def test_lineage_audit_flags_legacy_production_missing_mlflow_lineage(
     )
     assert not required["passed"]
     assert "run_id" in required["observed"]
-    assert (sandbox.project_root / "reports/lineage_verification.json").is_file()
+    assert (
+        sandbox.project_root / "reports/lineage_verification.json"
+    ).is_file()
 
 
 def test_reproducibility_check_compares_metrics_and_writes_report(
@@ -68,7 +71,9 @@ def test_reproducibility_check_compares_metrics_and_writes_report(
     )
     calls = []
 
-    monkeypatch.setattr(reproducibility, "code_version", lambda _root: "test-commit")
+    monkeypatch.setattr(
+        reproducibility, "code_version", lambda _root: "test-commit"
+    )
     monkeypatch.setattr(
         "mlops_pipeline.models.training.run_training",
         lambda _settings, save=False: calls.append(save) or result,
@@ -78,9 +83,16 @@ def test_reproducibility_check_compares_metrics_and_writes_report(
 
     assert report["status"] == "PASS"
     assert len(calls) == 2 and calls == [False, False]
-    assert all(item["absolute_delta"] == 0 for item in report["comparisons"])
-    assert report["metric_tolerance"] == sandbox.config.reproducibility.metric_tolerance
-    assert (sandbox.project_root / "reports/reproducibility_check.json").is_file()
+    assert all(
+        item["absolute_delta"] == 0 for item in report["comparisons"]
+    )
+    assert (
+        report["metric_tolerance"]
+        == sandbox.config.reproducibility.metric_tolerance
+    )
+    assert (
+        sandbox.project_root / "reports/reproducibility_check.json"
+    ).is_file()
 
 
 def test_reproducibility_check_fails_outside_configured_tolerance(
@@ -102,7 +114,9 @@ def test_reproducibility_check_fails_outside_configured_tolerance(
             }
         )
 
-    monkeypatch.setattr(reproducibility, "code_version", lambda _root: "test-commit")
+    monkeypatch.setattr(
+        reproducibility, "code_version", lambda _root: "test-commit"
+    )
     monkeypatch.setattr(
         "mlops_pipeline.models.training.run_training", fake_training
     )
