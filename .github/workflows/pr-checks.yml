@@ -40,9 +40,6 @@ jobs:
       - name: Validate YAML configuration
         run: PYTHONPATH=src python -m mlops_pipeline validate-config
 
-      - name: Train model for tests
-        run: PYTHONPATH=src python -m mlops_pipeline train
-
       - name: Run unit tests
         run: PYTHONPATH=src python -m pytest -q tests/unit --junitxml=reports/phase11-unit-junit.xml
 
