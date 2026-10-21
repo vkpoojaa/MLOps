@@ -419,3 +419,5 @@ The repository contains executable local evidence for the ML pipeline, gates, AP
 - two-member Git contribution history.
 
 This distinction is intentional and is part of the submission's evidence integrity.
+
+Team member contribution: Rhea
