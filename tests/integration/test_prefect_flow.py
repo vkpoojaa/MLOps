@@ -23,7 +23,7 @@ def _sha256(path: Path) -> str:
 
 
 def _isolated_project(tmp_path: Path) -> Path:
-    """Copy config and source CSVs into an isolated temporary project."""
+    """Create a temporary project with isolated config and input data."""
     (tmp_path / "config").mkdir(parents=True)
     (tmp_path / "data" / "raw").mkdir(parents=True)
 
@@ -51,7 +51,7 @@ def _isolated_project(tmp_path: Path) -> Path:
 
 
 def _install_current_production_copy(tmp_path: Path) -> None:
-    """Create temporary production artifacts with matching integrity metadata."""
+    """Create temporary production artifacts with valid integrity metadata."""
     from mlops_pipeline.config.loader import load_config
     from mlops_pipeline.models.training import run_training
 
@@ -173,11 +173,16 @@ def test_poor_candidate_is_rejected_and_real_production_artifact_is_preserved(
     summary = prefect_flow.house_price_flow(config_path=str(config_path))
     after = _sha256(production_path)
 
+    primary_metric = settings.config.model.evaluation.primary_metric
+    production_metrics = summary["model_gate"]["production_comparison"][
+        "production_metrics"
+    ]
+
     assert summary["status"] == "model_gate_failed"
     assert summary["model_gate"]["status"] == "FAIL"
-    assert summary["model_gate"]["candidate_metrics"]["mae"] == 50.0
-    assert summary["model_gate"]["production_comparison"]["production_metrics"]["mae"] == pytest.approx(
-        5.793117272533898
+    assert summary["model_gate"]["candidate_metrics"][primary_metric] == 50.0
+    assert production_metrics[primary_metric] == pytest.approx(
+        settings.config.model_gate.quality_threshold
     )
     assert summary["model_gate"]["failure_reasons"]
     assert before == after
