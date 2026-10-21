@@ -23,7 +23,7 @@ def _sha256(path: Path) -> str:
 
 
 def _isolated_project(tmp_path: Path) -> Path:
-    """Copy config and source CSVs so tests never alter supplied datasets/artifacts."""
+    """Copy config and source CSVs into an isolated temporary project."""
     (tmp_path / "config").mkdir(parents=True)
     (tmp_path / "data" / "raw").mkdir(parents=True)
 
@@ -51,7 +51,7 @@ def _isolated_project(tmp_path: Path) -> Path:
 
 
 def _install_current_production_copy(tmp_path: Path) -> None:
-    """Create isolated production artifacts with valid integrity metadata."""
+    """Create temporary production artifacts with matching integrity metadata."""
     from mlops_pipeline.config.loader import load_config
     from mlops_pipeline.models.training import run_training
 
@@ -59,12 +59,11 @@ def _install_current_production_copy(tmp_path: Path) -> None:
     settings = load_config(config_path, check_paths=True)
     training_run = run_training(settings, save=False)
 
-    models_dir = tmp_path / "artifacts" / "models"
-    models_dir.mkdir(parents=True, exist_ok=True)
+    production_path = settings.resolve(settings.config.paths.selected_model)
+    production_path.parent.mkdir(parents=True, exist_ok=True)
 
     selected_role = settings.config.model.selected
     selected_result = training_run.results[selected_role]
-    production_path = models_dir / "selected_model.joblib"
     joblib.dump(selected_result.pipeline, production_path)
 
     primary_metric = settings.config.model.evaluation.primary_metric
@@ -76,9 +75,10 @@ def _install_current_production_copy(tmp_path: Path) -> None:
         "artifact_sha256": _sha256(production_path),
     }
 
-    metadata_path = (
-        models_dir / "production_model_metadata.json"
+    metadata_path = settings.resolve(
+        settings.config.model_gate.production_metadata_path
     )
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
     metadata_path.write_text(
         json.dumps(metadata, indent=2) + "\n",
         encoding="utf-8",
@@ -115,6 +115,7 @@ def test_invalid_data_fails_gate_and_training_is_not_called(tmp_path, monkeypatc
     existing_model.write_text(
         "existing-model-must-survive", encoding="utf-8"
     )
+
     existing_report = tmp_path / "reports" / "model_evaluation.json"
     existing_report.parent.mkdir(parents=True)
     existing_report.write_text(
@@ -145,7 +146,10 @@ def test_poor_candidate_is_rejected_and_real_production_artifact_is_preserved(
     config_path = _isolated_project(tmp_path)
     _install_current_production_copy(tmp_path)
 
-    production_path = tmp_path / "artifacts" / "models" / "selected_model.joblib"
+    from mlops_pipeline.config.loader import load_config
+
+    settings = load_config(config_path, check_paths=True)
+    production_path = settings.resolve(settings.config.paths.selected_model)
     before = _sha256(production_path)
 
     def registry_must_not_run(*_args, **_kwargs):
