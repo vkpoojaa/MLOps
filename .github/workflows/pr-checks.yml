@@ -19,43 +19,40 @@ jobs:
     name: Config, tests, and lightweight pipeline smoke
     runs-on: ubuntu-latest
     timeout-minutes: 25
+
     steps:
-      - name: Check out exact commit
+      - name: Checkout exact commit
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Python
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
 
       - name: Install project and test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+          pip install -r requirements-dev.txt
 
       - name: Validate YAML configuration
         run: PYTHONPATH=src python -m mlops_pipeline validate-config
 
-      - name: Run unit tests (must pass)
+      - name: Run unit tests
         run: PYTHONPATH=src python -m pytest -q tests/unit --junitxml=reports/phase11-unit-junit.xml
 
-      - name: Run integration tests (must pass)
+      - name: Run integration tests
         run: PYTHONPATH=src python -m pytest -q tests/integration --junitxml=reports/phase11-integration-junit.xml
 
-      - name: Run lightweight pipeline smoke (ingest → validation → Data Gate only)
+      - name: Lightweight pipeline smoke
         run: PYTHONPATH=src python scripts/ci_pipeline_smoke.py
 
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr-test-reports-${{ github.run_id }}
-          path: reports/phase11-*-junit.xml
+          name: phase11-test-reports
+          path: reports/
           if-no-files-found: ignore
-          retention-days: 14
