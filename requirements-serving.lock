@@ -5,7 +5,7 @@ uvicorn==0.34.2
 pydantic==2.14.0
 PyYAML==6.0.3
 numpy==2.4.4
-pandas==3.0.2
+pandas==2.2.3
 scikit-learn==1.8.0
 joblib==1.5.3
 mlflow==2.22.0
