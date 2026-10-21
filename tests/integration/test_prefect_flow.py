@@ -17,6 +17,11 @@ from mlops_pipeline.pipeline import prefect_flow
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _sha256(path: Path) -> str:
+    """Return the SHA-256 digest of a file."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def _isolated_project(tmp_path: Path) -> Path:
     """Copy config and source CSVs so tests never alter supplied datasets/artifacts."""
     (tmp_path / "config").mkdir(parents=True)
@@ -29,7 +34,8 @@ def _isolated_project(tmp_path: Path) -> Path:
     raw_cfg["mlflow"]["enabled"] = False
     raw_cfg["model_registry"]["enabled"] = False
     config_path.write_text(
-        yaml.safe_dump(raw_cfg, sort_keys=False), encoding="utf-8"
+        yaml.safe_dump(raw_cfg, sort_keys=False),
+        encoding="utf-8",
     )
 
     for name in (
@@ -42,6 +48,41 @@ def _isolated_project(tmp_path: Path) -> Path:
         )
 
     return config_path
+
+
+def _install_current_production_copy(tmp_path: Path) -> None:
+    """Create isolated production artifacts with valid integrity metadata."""
+    from mlops_pipeline.config.loader import load_config
+    from mlops_pipeline.models.training import run_training
+
+    config_path = tmp_path / "config" / "config.yaml"
+    settings = load_config(config_path, check_paths=True)
+    training_run = run_training(settings, save=False)
+
+    models_dir = tmp_path / "artifacts" / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+
+    selected_role = settings.config.model.selected
+    selected_result = training_run.results[selected_role]
+    production_path = models_dir / "selected_model.joblib"
+    joblib.dump(selected_result.pipeline, production_path)
+
+    primary_metric = settings.config.model.evaluation.primary_metric
+    metadata = {
+        "model_name": settings.config.model.baseline.name,
+        "metrics": {
+            primary_metric: settings.config.model_gate.quality_threshold,
+        },
+        "artifact_sha256": _sha256(production_path),
+    }
+
+    metadata_path = (
+        models_dir / "production_model_metadata.json"
+    )
+    metadata_path.write_text(
+        json.dumps(metadata, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def test_prefect_flow_success_runs_all_stages_in_isolated_project(tmp_path):
@@ -98,38 +139,6 @@ def test_invalid_data_fails_gate_and_training_is_not_called(tmp_path, monkeypatc
     assert existing_report.read_text(encoding="utf-8") == "existing-report-must-survive"
 
 
-def _install_current_production_copy(tmp_path: Path):
-    """Create isolated production-like artifacts for the Model Gate test."""
-    from mlops_pipeline.config.loader import load_config
-    from mlops_pipeline.models.training import run_training
-
-    config_path = tmp_path / "config" / "config.yaml"
-    settings = load_config(config_path=str(config_path), check_paths=True)
-    training_run = run_training(settings, save=False)
-
-    models_dir = tmp_path / "artifacts" / "models"
-    models_dir.mkdir(parents=True, exist_ok=True)
-
-    selected_role = settings.config.model.selected
-    selected_result = training_run.results[selected_role]
-    joblib.dump(
-        selected_result.pipeline,
-        models_dir / "selected_model.joblib",
-    )
-
-    # Create metadata for this isolated test only.
-    metadata = {
-        "model_name": settings.config.model.baseline.name,
-        "metrics": {
-            "mae": settings.config.model_gate.quality_threshold,
-        },
-    }
-    (models_dir / "production_model_metadata.json").write_text(
-        json.dumps(metadata, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-
 def test_poor_candidate_is_rejected_and_real_production_artifact_is_preserved(
     tmp_path, monkeypatch
 ):
@@ -137,7 +146,7 @@ def test_poor_candidate_is_rejected_and_real_production_artifact_is_preserved(
     _install_current_production_copy(tmp_path)
 
     production_path = tmp_path / "artifacts" / "models" / "selected_model.joblib"
-    before = hashlib.sha256(production_path.read_bytes()).hexdigest()
+    before = _sha256(production_path)
 
     def registry_must_not_run(*_args, **_kwargs):
         pytest.fail("registry/promotion was invoked after the Model Gate failed")
@@ -158,7 +167,7 @@ def test_poor_candidate_is_rejected_and_real_production_artifact_is_preserved(
     )
 
     summary = prefect_flow.house_price_flow(config_path=str(config_path))
-    after = hashlib.sha256(production_path.read_bytes()).hexdigest()
+    after = _sha256(production_path)
 
     assert summary["status"] == "model_gate_failed"
     assert summary["model_gate"]["status"] == "FAIL"
